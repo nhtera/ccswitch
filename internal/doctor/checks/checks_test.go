@@ -185,7 +185,7 @@ func TestShellHookCheck_Disabled(t *testing.T) {
 
 func TestShellHookCheck_FindsLine(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHomeEnv(t, home)
 	if err := os.WriteFile(filepath.Join(home, ".zshrc"),
 		[]byte("# preamble\n[ -f ~/.config/ccswitch/active.env ] && . ~/.config/ccswitch/active.env\n"),
 		0o600); err != nil {
@@ -199,7 +199,7 @@ func TestShellHookCheck_FindsLine(t *testing.T) {
 
 func TestShellHookCheck_MissingLine(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHomeEnv(t, home)
 	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte("# nothing relevant\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -207,4 +207,14 @@ func TestShellHookCheck_MissingLine(t *testing.T) {
 	if res.Status != doctor.StatusWarn {
 		t.Fatalf("expected WARN, got %s: %s", res.Status, res.Message)
 	}
+}
+
+// setHomeEnv points os.UserHomeDir() at dir on every supported OS.
+// On Unix os.UserHomeDir reads $HOME; on Windows it reads %USERPROFILE%
+// (falling back to %HOMEDRIVE%%HOMEPATH%). Setting both keeps the test
+// portable across runners.
+func setHomeEnv(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 }

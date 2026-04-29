@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -89,7 +90,9 @@ func TestWriteActiveEnv_AtomicAndSourceable(t *testing.T) {
 		t.Fatalf("missing export, got:\n%s", data)
 	}
 	info, _ := os.Stat(filepath.Join(dir, "active.env"))
-	if info.Mode().Perm() != 0o600 {
+	// Windows doesn't honor POSIX mode bits — Go reports 0o666 regardless
+	// of what we passed to OpenFile. ACL-based perms are out of scope here.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("expected mode 0600, got %v", info.Mode().Perm())
 	}
 }
