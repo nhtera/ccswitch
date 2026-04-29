@@ -1,0 +1,82 @@
+version: 2
+
+project_name: ccswitch
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ccswitch
+    main: ./cmd/ccswitch
+    binary: ccswitch
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: ccswitch
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ .Version }}-snapshot"
+
+# To enable Apple code-signing + notarization, install gon or use the
+# goreleaser-pro `notarize.macos` block, then export these env vars in CI:
+#   MACOS_SIGN_P12 / MACOS_SIGN_PASSWORD
+#   MACOS_NOTARY_ISSUER_ID / MACOS_NOTARY_KEY_ID / MACOS_NOTARY_KEY
+# See docs/release-signing.md (todo) for the step-by-step.
+
+brews:
+  - name: ccswitch
+    repository:
+      owner: nhtera
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/nhtera/ccswitch
+    description: "Switch between multiple Claude Code accounts in <100 ms"
+    license: MIT
+    test: |
+      system "#{bin}/ccswitch", "version"
+    install: |
+      bin.install "ccswitch"
+
+release:
+  github:
+    owner: nhtera
+    name: ccswitch
+  draft: false
+  prerelease: auto
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^chore:"
+      - "^docs:"
+      - "^test:"

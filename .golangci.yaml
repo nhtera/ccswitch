@@ -1,0 +1,25 @@
+run:
+  timeout: 3m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - gosec
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+linters-settings:
+  gosec:
+    excludes:
+      # G104: errcheck linter already covers unhandled error returns.
+      - G104
+
+issues:
+  exclude-rules:
+    # Tests can shadow vars / use fixtures freely.
+    - path: _test\.go
+      linters:
+        - gosec

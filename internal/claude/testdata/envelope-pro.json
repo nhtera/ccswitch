@@ -1,0 +1,10 @@
+{
+  "claudeAiOauth": {
+    "accessToken": "sk-ant-oat01-TEST-PRO-ACCESS-TOKEN",
+    "refreshToken": "sk-ant-ort01-TEST-PRO-REFRESH-TOKEN",
+    "expiresAt": 1775212290694,
+    "scopes": ["user:profile", "user:inference"],
+    "subscriptionType": "pro",
+    "rateLimitTier": "default_claude_ai"
+  }
+}

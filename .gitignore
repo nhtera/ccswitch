@@ -1,0 +1,30 @@
+# Build artifacts (root-anchored so cmd/ccswitch/ source dir stays tracked)
+/ccswitch
+/ccswitch-*
+/dist/
+/bin/
+
+# Go
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Encrypted credential / export artifacts (never commit)
+*.cred
+*.cce
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Claude Code per-user session state (not committed)
+.claude/
+
+# Test scratch
+testdata-tmp/
