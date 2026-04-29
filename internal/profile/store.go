@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -115,6 +117,155 @@ func (s *Store) FindByStableFingerprint(sfp string) (Profile, bool) {
 		}
 	}
 	return Profile{}, false
+}
+
+// UpdateMetadata replaces the metadata fields of the profile named
+// `name` with values from `incoming`. Preserves the existing
+// CreatedAt and Env (when incoming.Env is empty) so a `--replace`
+// re-capture doesn't reset things the user customized. Persists to
+// disk.
+func (s *Store) UpdateMetadata(name string, incoming Profile) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Profiles {
+		if s.data.Profiles[i].Name != name {
+			continue
+		}
+		updated := s.data.Profiles[i]
+		updated.Type = incoming.Type
+		updated.Fingerprint = incoming.Fingerprint
+		updated.StableFingerprint = incoming.StableFingerprint
+		updated.Email = incoming.Email
+		updated.OrgName = incoming.OrgName
+		updated.OAuthAccount = incoming.OAuthAccount
+		if incoming.Note != "" {
+			updated.Note = incoming.Note
+		}
+		if len(incoming.Env) > 0 {
+			updated.Env = incoming.Env
+		}
+		s.data.Profiles[i] = updated
+		return s.save()
+	}
+	return ErrNotFound
+}
+
+// FindByEmail returns the profile whose Email exactly equals email
+// (case-insensitive). Empty email never matches.
+func (s *Store) FindByEmail(email string) (Profile, bool) {
+	if email == "" {
+		return Profile{}, false
+	}
+	target := strings.ToLower(strings.TrimSpace(email))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.data.Profiles {
+		if strings.ToLower(p.Email) == target {
+			return p, true
+		}
+	}
+	return Profile{}, false
+}
+
+// SortedByName returns a copy of all profiles sorted alphabetically
+// by name. Used by Lookup-by-index and rotation commands so the
+// ordering is stable across invocations.
+func (s *Store) SortedByName() []Profile {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Profile, len(s.data.Profiles))
+	copy(out, s.data.Profiles)
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Lookup resolves a flexible identifier to a profile:
+//
+//   - "@" in the string → match by Profile.Email
+//   - all-digit string → 1-based index into SortedByName()
+//   - otherwise → exact name match
+//
+// Returns ErrNotFound with a hint on miss.
+func (s *Store) Lookup(ident string) (Profile, error) {
+	ident = strings.TrimSpace(ident)
+	if ident == "" {
+		return Profile{}, ErrNotFound
+	}
+	if strings.Contains(ident, "@") {
+		if p, ok := s.FindByEmail(ident); ok {
+			return p, nil
+		}
+		return Profile{}, fmt.Errorf("no profile with email %q: %w", ident, ErrNotFound)
+	}
+	if isAllDigits(ident) {
+		n, err := strconv.Atoi(ident)
+		if err != nil || n < 1 {
+			return Profile{}, fmt.Errorf("invalid index %q: %w", ident, ErrNotFound)
+		}
+		all := s.SortedByName()
+		if n > len(all) {
+			return Profile{}, fmt.Errorf("index %d out of range (have %d profiles): %w", n, len(all), ErrNotFound)
+		}
+		return all[n-1], nil
+	}
+	if p, ok := s.Find(ident); ok {
+		return p, nil
+	}
+	return Profile{}, fmt.Errorf("no profile named %q: %w", ident, ErrNotFound)
+}
+
+// MostRecentlyUsedName returns the name of the profile with the
+// latest LastUsedAt, or "" if no profile has ever been used. This is
+// what `next` should rotate from — it's the profile the user most
+// recently asked us to switch to, regardless of whether the live
+// keychain or ~/.claude.json still agree.
+func (s *Store) MostRecentlyUsedName() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	name := ""
+	var latest time.Time
+	for _, p := range s.data.Profiles {
+		if p.LastUsedAt == nil {
+			continue
+		}
+		if name == "" || p.LastUsedAt.After(latest) {
+			name = p.Name
+			latest = *p.LastUsedAt
+		}
+	}
+	return name
+}
+
+// NextProfile returns the profile that follows currentName in
+// SortedByName() order, wrapping at the end. If currentName is empty
+// or not found, the first profile is returned. Errors only when
+// there are zero profiles.
+func (s *Store) NextProfile(currentName string) (Profile, error) {
+	all := s.SortedByName()
+	if len(all) == 0 {
+		return Profile{}, ErrNotFound
+	}
+	if len(all) == 1 {
+		return all[0], nil
+	}
+	for i, p := range all {
+		if p.Name == currentName {
+			return all[(i+1)%len(all)], nil
+		}
+	}
+	return all[0], nil
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // Add inserts a new profile. Returns ErrAlreadyExists on name collision and

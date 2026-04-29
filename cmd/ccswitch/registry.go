@@ -8,6 +8,7 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newAddCmd())
 	root.AddCommand(newUseCmd())
+	root.AddCommand(newNextCmd())
 	root.AddCommand(newListCmd())
 	root.AddCommand(newCurrentCmd())
 	root.AddCommand(newRenameCmd())

@@ -224,3 +224,86 @@ func TestSuggestName_EmptyInputs(t *testing.T) {
 		t.Fatalf("got %q, want empty", got)
 	}
 }
+
+func TestStore_LookupByName(t *testing.T) {
+	s := newTempStore(t)
+	_ = s.Add(sample("alpha", "sha256:a"))
+	_ = s.Add(sample("beta", "sha256:b"))
+	got, err := s.Lookup("beta")
+	if err != nil || got.Name != "beta" {
+		t.Fatalf("Lookup beta: got %+v, err %v", got, err)
+	}
+}
+
+func TestStore_LookupByEmail(t *testing.T) {
+	s := newTempStore(t)
+	p := sample("alpha", "sha256:a")
+	p.Email = "Alice@Example.COM"
+	_ = s.Add(p)
+	// Mixed-case input should match case-insensitively.
+	got, err := s.Lookup("alice@example.com")
+	if err != nil || got.Name != "alpha" {
+		t.Fatalf("Lookup by email: got %+v, err %v", got, err)
+	}
+}
+
+func TestStore_LookupByEmail_NoMatch(t *testing.T) {
+	s := newTempStore(t)
+	_ = s.Add(sample("alpha", "sha256:a"))
+	_, err := s.Lookup("nobody@example.com")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestStore_LookupByIndex(t *testing.T) {
+	s := newTempStore(t)
+	_ = s.Add(sample("zeta", "sha256:z"))
+	_ = s.Add(sample("alpha", "sha256:a"))
+	_ = s.Add(sample("mu", "sha256:m"))
+	// Sorted order: alpha (1), mu (2), zeta (3).
+	got, err := s.Lookup("2")
+	if err != nil || got.Name != "mu" {
+		t.Fatalf("Lookup index 2: got %+v, err %v", got, err)
+	}
+	if _, err := s.Lookup("99"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected out-of-range error, got %v", err)
+	}
+}
+
+func TestStore_NextProfile_RotatesAlphabetical(t *testing.T) {
+	s := newTempStore(t)
+	_ = s.Add(sample("zeta", "sha256:z"))
+	_ = s.Add(sample("alpha", "sha256:a"))
+	_ = s.Add(sample("mu", "sha256:m"))
+	// alpha → mu → zeta → alpha
+	got, _ := s.NextProfile("alpha")
+	if got.Name != "mu" {
+		t.Fatalf("after alpha, got %q want mu", got.Name)
+	}
+	got, _ = s.NextProfile("mu")
+	if got.Name != "zeta" {
+		t.Fatalf("after mu, got %q want zeta", got.Name)
+	}
+	got, _ = s.NextProfile("zeta")
+	if got.Name != "alpha" {
+		t.Fatalf("after zeta wrap, got %q want alpha", got.Name)
+	}
+}
+
+func TestStore_NextProfile_NoCurrentReturnsFirst(t *testing.T) {
+	s := newTempStore(t)
+	_ = s.Add(sample("beta", "sha256:b"))
+	_ = s.Add(sample("alpha", "sha256:a"))
+	got, _ := s.NextProfile("")
+	if got.Name != "alpha" {
+		t.Fatalf("got %q want alpha", got.Name)
+	}
+}
+
+func TestStore_NextProfile_Empty(t *testing.T) {
+	s := newTempStore(t)
+	if _, err := s.NextProfile(""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}

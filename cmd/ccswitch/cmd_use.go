@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nhtera/ccswitch/internal/claude"
@@ -15,9 +16,15 @@ import (
 
 func newUseCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "use <name>",
+		Use:   "use <name|email|index>",
 		Short: "Switch the active Claude Code account",
-		Args:  cobra.ExactArgs(1),
+		Long: `Switch the active Claude Code account.
+
+The argument can be:
+  - A profile name (e.g. "fetch-technology")
+  - An email address (matched against captured profile emails)
+  - A 1-based index into the alphabetical profile list (e.g. "1", "2")`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			if ctx == nil {
@@ -28,22 +35,38 @@ func newUseCmd() *cobra.Command {
 	}
 }
 
-func runUse(ctx context.Context, cmd *cobra.Command, name string) error {
-	if err := profile.ValidateName(name); err != nil {
-		return err
+// isAllDigitsCmd mirrors profile.isAllDigits for use in this package
+// without re-exporting the helper.
+func isAllDigitsCmd(s string) bool {
+	if s == "" {
+		return false
 	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
 
+func runUse(ctx context.Context, cmd *cobra.Command, ident string) error {
 	store, err := profile.LoadStore()
 	if err != nil {
 		return err
 	}
-	target, ok := store.Find(name)
-	if !ok {
-		if hint := suggestName(store, name); hint != "" {
-			return fmt.Errorf("no profile named %q. Did you mean %q?", name, hint)
+	target, err := store.Lookup(ident)
+	if err != nil {
+		// Only do the typo-suggestion dance for plain-name input; for
+		// email/index lookups the error message already tells the user
+		// what's wrong.
+		if !strings.Contains(ident, "@") && !isAllDigitsCmd(ident) {
+			if hint := suggestName(store, ident); hint != "" {
+				return fmt.Errorf("no profile named %q. Did you mean %q?", ident, hint)
+			}
 		}
-		return fmt.Errorf("no profile named %q. Run `ccswitch list` to see profiles", name)
+		return fmt.Errorf("%w. Run `ccswitch list` to see profiles", err)
 	}
+	name := target.Name
 
 	bridge := claude.NewDefaultBridge()
 
@@ -81,6 +104,17 @@ func runUse(ctx context.Context, cmd *cobra.Command, name string) error {
 
 	if err := bridge.WriteLive(ctx, blob); err != nil {
 		return fmt.Errorf("write live credential: %w", err)
+	}
+
+	// Restore the captured oauthAccount block into ~/.claude.json so
+	// Claude Code's `/status` shows the right email/org/login-method
+	// for the new account. Best-effort — failure here is reported as a
+	// warning but doesn't undo the credential switch (the live blob is
+	// already correct, this just affects /status display).
+	if len(target.OAuthAccount) > 0 {
+		if werr := claude.WriteOAuthAccount(target.OAuthAccount); werr != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warn: switched credential but failed to update ~/.claude.json oauthAccount: %v\n", werr)
+		}
 	}
 
 	cfgDir, err := secrets.ConfigDir()
