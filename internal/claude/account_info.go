@@ -113,3 +113,121 @@ func readAccountInfoFrom(path string) (*AccountInfo, error) {
 	}
 	return outer.OAuthAccount, nil
 }
+
+// ReadOAuthAccountRaw returns the raw bytes of ~/.claude.json's
+// oauthAccount field. Used at capture time to snapshot ALL fields
+// (including ones we don't model in AccountInfo, like
+// organizationRole or displayName) so they can be restored on switch.
+//
+// Returns (nil, nil) when the file is missing, has no oauthAccount
+// block, or the block is empty.
+func ReadOAuthAccountRaw() (json.RawMessage, error) {
+	data, err := os.ReadFile(GlobalConfigPath())
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var outer struct {
+		OAuthAccount json.RawMessage `json:"oauthAccount"`
+	}
+	if err := json.Unmarshal(data, &outer); err != nil {
+		return nil, err
+	}
+	if len(outer.OAuthAccount) == 0 || string(outer.OAuthAccount) == "null" {
+		return nil, nil
+	}
+	return outer.OAuthAccount, nil
+}
+
+// WriteOAuthAccount atomically replaces just the `oauthAccount`
+// field of ~/.claude.json with snapshot, preserving every other
+// top-level field unchanged. Used after a profile switch so Claude
+// Code's `/status` (which reads email/org/login-method from
+// .claude.json) reflects the new account.
+//
+// Concurrent writes from Claude Code itself are theoretically
+// possible but extremely rare — Claude Code only writes
+// .claude.json on /login, /logout, and account-mutating
+// operations, none of which run concurrently with a CLI switch.
+//
+// If snapshot is nil, the field is removed (Claude Code will
+// repopulate from the access token on next /status).
+func WriteOAuthAccount(snapshot json.RawMessage) error {
+	path := GlobalConfigPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			// Bootstrap: create a minimal file with just the
+			// oauthAccount block so Claude Code can pick it up on
+			// next read.
+			if snapshot == nil {
+				return nil
+			}
+			doc := map[string]json.RawMessage{"oauthAccount": snapshot}
+			out, err := json.Marshal(doc)
+			if err != nil {
+				return err
+			}
+			return atomicWrite(path, out, 0o600)
+		}
+		return err
+	}
+
+	// Decode top-level fields as raw messages so we preserve the
+	// exact bytes of every field we don't touch — important
+	// because Claude Code may have added new fields we don't know
+	// about, and we shouldn't drop or reformat them.
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return err
+	}
+	if doc == nil {
+		doc = map[string]json.RawMessage{}
+	}
+	if snapshot == nil {
+		delete(doc, "oauthAccount")
+	} else {
+		doc["oauthAccount"] = snapshot
+	}
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	return atomicWrite(path, out, 0o600)
+}
+
+// atomicWrite writes data to path via temp+rename so a crash mid-write
+// can never leave a half-written file.
+func atomicWrite(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".ccswitch-claude-config-*.tmp")
+	if err != nil {
+		return err
+	}
+	cleanup := func() { _ = os.Remove(tmp.Name()) }
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}

@@ -19,6 +19,7 @@ func newAddCmd() *cobra.Command {
 		typeFlag string
 		note     string
 		envFlag  []string
+		replace  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "add [name]",
@@ -27,7 +28,11 @@ func newAddCmd() *cobra.Command {
 
 If no name is given, ccswitch reads ~/.claude.json to suggest one based on the
 account's email or organization name. Pass --yes to silently accept the
-suggestion.`,
+suggestion.
+
+Pass --replace to refresh an existing profile (same name) with the current
+live credential — useful for backfilling fields added in newer ccswitch
+versions, like the .claude.json oauthAccount snapshot.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -67,8 +72,14 @@ suggestion.`,
 			if err != nil {
 				return err
 			}
-			if existing, ok := store.FindByFingerprint(fp); ok {
-				return fmt.Errorf("this credential is already captured as profile %q (try `ccswitch rename`)", existing.Name)
+			// --replace lets users refresh an existing profile with the
+			// current live credential (useful for backfilling new
+			// fields). Without --replace, fingerprint or name
+			// collisions error out as before.
+			if !replace {
+				if existing, ok := store.FindByFingerprint(fp); ok {
+					return fmt.Errorf("this credential is already captured as profile %q (use --replace to update, or `ccswitch rename`)", existing.Name)
+				}
 			}
 
 			secStore, err := openSecrets(ctx)
@@ -93,6 +104,35 @@ suggestion.`,
 				p.OrgName = info.OrgName
 				p.StableFingerprint = info.StableFingerprint()
 			}
+			// Snapshot the raw oauthAccount JSON block so `use` can
+			// restore it later. Best-effort — a missing snapshot just
+			// means /status will show stale data after switch.
+			if raw, rerr := claude.ReadOAuthAccountRaw(); rerr == nil && raw != nil {
+				p.OAuthAccount = raw
+			}
+
+			if replace {
+				// In --replace mode, prefer in-place update over
+				// add-or-fail. Match by name first (user's explicit
+				// intent), then by fingerprint (catches the case where
+				// the user passed a fresh name but the credential is
+				// already known under a different name).
+				if _, ok := store.Find(name); ok {
+					if err := store.UpdateMetadata(name, p); err != nil {
+						return err
+					}
+					fmt.Fprintln(cmd.OutOrStdout(), formatCaptureLine(name, finalType, info, infoErr))
+					return nil
+				}
+				if existing, ok := store.FindByFingerprint(fp); ok {
+					if err := store.UpdateMetadata(existing.Name, p); err != nil {
+						return err
+					}
+					fmt.Fprintln(cmd.OutOrStdout(), formatCaptureLine(existing.Name, finalType, info, infoErr))
+					return nil
+				}
+			}
+
 			if err := store.Add(p); err != nil {
 				_ = secStore.Delete(ctx, profile.SecretKey(name))
 				return err
@@ -108,6 +148,7 @@ suggestion.`,
 	cmd.Flags().StringVar(&typeFlag, "type", "", "override detected type (oauth|api|sso)")
 	cmd.Flags().StringVar(&note, "note", "", "free-form note attached to the profile")
 	cmd.Flags().StringSliceVar(&envFlag, "env", nil, "per-profile env var (repeatable: KEY=VALUE)")
+	cmd.Flags().BoolVar(&replace, "replace", false, "update an existing profile in place (preserves env unless --env given)")
 	return cmd
 }
 
@@ -157,10 +198,9 @@ func resolveName(cmd *cobra.Command, args []string, info *claude.AccountInfo) (s
 	return answer, nil
 }
 
-// formatCaptureLine renders the success message. Mirrors the style
-// claude-swap uses ("Updated credentials for Account 2
-// (tn@erai.dev [ERAI DEV])") so users coming from
-// that tool see familiar output.
+// formatCaptureLine renders the success message — name, type, and
+// the captured account's email + organization (when known) so users
+// can confirm at a glance which account just got snapshotted.
 func formatCaptureLine(name string, t claude.Type, info *claude.AccountInfo, infoErr error) string {
 	if info == nil {
 		hint := ""

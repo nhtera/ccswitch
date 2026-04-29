@@ -143,10 +143,9 @@ var ErrClaudeCLIMissing = errors.New("claude: `claude` binary not on PATH for de
 // macOS the live keychain entry will then contain a freshened access
 // token that callers can read via Bridge.ReadLive.
 //
-// Borrowed from CodexBar's delegated-refresh approach (much safer
-// than POSTing to the OAuth token endpoint with a hard-coded
-// client_id, since we never impersonate Claude Code's own
-// credentials).
+// Delegating to the CLI is safer than POSTing to the OAuth token
+// endpoint with a hard-coded client_id, since we never impersonate
+// Claude Code's own credentials.
 func DelegatedRefresh(ctx context.Context, timeout time.Duration) error {
 	if _, err := exec.LookPath("claude"); err != nil {
 		return ErrClaudeCLIMissing
@@ -165,8 +164,7 @@ func DelegatedRefresh(ctx context.Context, timeout time.Duration) error {
 	return nil
 }
 
-// FormatReset returns a human-friendly (countdown, clock) pair like
-// cswap does:
+// FormatReset returns a human-friendly (countdown, clock) pair:
 //
 //	countdown: "2d 1h", "3h 53m", "12m"
 //	clock:     same-day → "22:00", other-day → "May 1 22:00"

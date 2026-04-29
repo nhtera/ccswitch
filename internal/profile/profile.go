@@ -6,6 +6,7 @@
 package profile
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"time"
@@ -39,7 +40,13 @@ type Profile struct {
 	StableFingerprint string            `json:"stable_fingerprint,omitempty"`
 	Email             string            `json:"email,omitempty"`
 	OrgName           string            `json:"org_name,omitempty"`
-	Env               map[string]string `json:"env,omitempty"`
+	// OAuthAccount is the raw JSON of ~/.claude.json's oauthAccount
+	// field at capture time. Restored on switch so Claude Code's
+	// `/status` (which reads email/org/login-method from .claude.json)
+	// reflects the new account. Omitempty keeps profiles captured
+	// before this field existed loading cleanly.
+	OAuthAccount json.RawMessage   `json:"oauth_account,omitempty"`
+	Env          map[string]string `json:"env,omitempty"`
 }
 
 // File is the persisted shape of profiles.json.
