@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"text/tabwriter"
 
 	"github.com/nhtera/ccswitch/internal/claude"
@@ -79,10 +80,13 @@ func newListCmd() *cobra.Command {
 			} else {
 				fmt.Fprintln(tw, "  NAME\tTYPE\tLAST USED\tNOTE")
 			}
+			out := cmd.OutOrStdout()
 			for _, p := range profiles {
 				marker := " "
+				name := p.Name
 				if p.Name == activeName {
-					marker = "*"
+					marker = styleAccent(out, "*")
+					name = styleAccent(out, p.Name)
 				}
 				lastUsed := "-"
 				if p.LastUsedAt != nil {
@@ -94,9 +98,16 @@ func newListCmd() *cobra.Command {
 				}
 				if showIdentity {
 					identity := formatIdentity(p)
-					fmt.Fprintf(tw, "%s %s\t%s\t%s\t%s\t%s\n", marker, p.Name, p.Type, identity, lastUsed, note)
+					fmt.Fprintf(tw, "%s %s\t%s\t%s\t%s\t%s\n",
+						marker, name, p.Type,
+						styleMuted(out, identity),
+						styleMuted(out, lastUsed),
+						styleMuted(out, note))
 				} else {
-					fmt.Fprintf(tw, "%s %s\t%s\t%s\t%s\n", marker, p.Name, p.Type, lastUsed, note)
+					fmt.Fprintf(tw, "%s %s\t%s\t%s\t%s\n",
+						marker, name, p.Type,
+						styleMuted(out, lastUsed),
+						styleMuted(out, note))
 				}
 			}
 			if err := tw.Flush(); err != nil {
@@ -113,7 +124,7 @@ func newListCmd() *cobra.Command {
 	return cmd
 }
 
-// renderListWithUsage produces the cswap-style layout: an "Accounts:"
+// renderListWithUsage produces a per-account block layout: an "Accounts:"
 // section with one block per profile (identity row + 5h/7d lines),
 // followed by the running-instance footer. Network calls are made
 // here only.
@@ -123,16 +134,25 @@ func renderListWithUsage(ctx context.Context, cmd *cobra.Command, profiles []pro
 	if err != nil {
 		return err
 	}
+
+	// Sort by name so the displayed "N:" prefix matches what
+	// `ccswitch use <N>` resolves to (Store.Lookup uses sorted order).
+	sort.Slice(profiles, func(i, j int) bool { return profiles[i].Name < profiles[j].Name })
+
 	rows := fetchUsageForProfiles(ctx, profiles, secStore)
 
-	fmt.Fprintln(out, "Accounts:")
+	fmt.Fprintln(out, styleAccent(out, "Accounts:"))
 	for i, p := range profiles {
 		identity := formatIdentity(p)
 		marker := ""
 		if p.Name == activeName {
-			marker = " (active)"
+			marker = " " + styleAccent(out, "(active)")
 		}
-		fmt.Fprintf(out, "  %s: %s%s\n", p.Name, identity, marker)
+		fmt.Fprintf(out, "  %s %s %s%s\n",
+			styleMuted(out, fmt.Sprintf("%d:", i+1)),
+			p.Name,
+			styleMuted(out, "— "+identity),
+			marker)
 		renderUsageRows(out, []usageRow{rows[i]}, []profile.Profile{p})
 		fmt.Fprintln(out)
 	}

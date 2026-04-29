@@ -23,10 +23,10 @@ func renderRunningInstances(cmd *cobra.Command) {
 
 	out := cmd.OutOrStdout()
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Running instances:")
+	fmt.Fprintln(out, styleAccent(out, "Running instances:"))
 
 	// Group CLI sessions by cwd so multiple sessions in the same project
-	// show as one row with a session count, like cswap does.
+	// show as one row with a session count.
 	cliByCWD := map[string]int{}
 	cliCWDs := []string{}
 	for _, s := range sessions {
@@ -45,7 +45,10 @@ func renderRunningInstances(cmd *cobra.Command) {
 		if count > 1 {
 			suffix = fmt.Sprintf("  (%d sessions)", count)
 		}
-		fmt.Fprintf(out, "  CLI       %s%s\n", contractHome(cwd), suffix)
+		fmt.Fprintf(out, "  %s CLI       %s%s\n",
+			styleSuccess(out, "●"),
+			contractHome(cwd),
+			styleMuted(out, suffix))
 	}
 
 	// IDEs from .lock files: dedupe by IDE+workspace.
@@ -87,7 +90,11 @@ func renderRunningInstances(cmd *cobra.Command) {
 		if path == "" {
 			path = "(no workspace)"
 		}
-		fmt.Fprintf(out, "  %-9s %s  (IDE)\n", shortIdeName(r.ide), path)
+		fmt.Fprintf(out, "  %s %-9s %s  %s\n",
+			styleSuccess(out, "●"),
+			shortIdeName(r.ide),
+			path,
+			styleMuted(out, "(IDE)"))
 	}
 }
 

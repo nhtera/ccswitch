@@ -4,16 +4,45 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+
+	"golang.org/x/term"
 )
+
+// ANSI SGR codes inlined here to keep doctor self-contained (no
+// dependency on the cmd-package color helper).
+const (
+	doctorReset  = "\x1b[0m"
+	doctorGreen  = "\x1b[32m"
+	doctorYellow = "\x1b[33m"
+	doctorRed    = "\x1b[31m"
+	doctorDim    = "\x1b[2m"
+)
+
+func doctorColorOK(w io.Writer) bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
+}
 
 // RenderText writes a human-readable report to w. Verbose includes fix hints
 // even on PASS lines (default: hint only on non-PASS).
 func RenderText(w io.Writer, rep Report, verbose bool) {
+	color := doctorColorOK(w)
 	for _, r := range rep.Checks {
-		tag := tagFor(r.Status)
+		tag := tagFor(r.Status, color)
 		fmt.Fprintf(w, "  %s  %-22s %s\n", tag, r.Name, r.Message)
 		if r.FixHint != "" && (verbose || r.Status != StatusPass) {
-			fmt.Fprintf(w, "        %-22s fix: %s\n", "", r.FixHint)
+			hint := "fix: " + r.FixHint
+			if color {
+				hint = doctorDim + hint + doctorReset
+			}
+			fmt.Fprintf(w, "        %-22s %s\n", "", hint)
 		}
 	}
 	fmt.Fprintf(w, "\n%d PASS, %d WARN, %d FAIL", rep.Summary.Pass, rep.Summary.Warn, rep.Summary.Fail)
@@ -30,16 +59,23 @@ func RenderJSON(w io.Writer, rep Report) error {
 	return enc.Encode(rep)
 }
 
-func tagFor(s Status) string {
+func tagFor(s Status, color bool) string {
+	tag := ""
+	col := ""
 	switch s {
 	case StatusPass:
-		return "PASS"
+		tag, col = "PASS", doctorGreen
 	case StatusWarn:
-		return "WARN"
+		tag, col = "WARN", doctorYellow
 	case StatusFail:
-		return "FAIL"
+		tag, col = "FAIL", doctorRed
 	case StatusSkip:
-		return " -  "
+		tag, col = " -  ", doctorDim
+	default:
+		return "?   "
 	}
-	return "?   "
+	if !color {
+		return tag
+	}
+	return col + tag + doctorReset
 }

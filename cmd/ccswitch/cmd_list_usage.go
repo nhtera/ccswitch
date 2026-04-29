@@ -139,7 +139,7 @@ func renderUsageRows(w io.Writer, rows []usageRow, profiles []profile.Profile) {
 			if errors.Is(r.Err, claude.ErrUsageUnauthorized) {
 				hint = fmt.Sprintf(" (run `ccswitch use %s` after `claude /login` to refresh)", profiles[i].Name)
 			}
-			fmt.Fprintf(w, "       usage unavailable%s\n", hint)
+			fmt.Fprintf(w, "       %s\n", styleMuted(w, "usage unavailable"+hint))
 			continue
 		}
 		if r.Result == nil {
@@ -154,11 +154,16 @@ func printUsageLine(w io.Writer, label string, b *claude.UsageBucket, now time.T
 	if b == nil {
 		return
 	}
+	pctStr := fmt.Sprintf("%3.0f%%", b.Pct)
+	pctColored := stylePercent(w, b.Pct, pctStr)
 	countdown, clock := claude.FormatReset(b.ResetsAt, now)
 	switch {
 	case clock == "" && countdown == "":
-		fmt.Fprintf(w, "       %s: %3.0f%%\n", label, b.Pct)
+		fmt.Fprintf(w, "       %s: %s\n", label, pctColored)
 	default:
-		fmt.Fprintf(w, "       %s: %3.0f%%   resets %-12s  in %s\n", label, b.Pct, clock, countdown)
+		fmt.Fprintf(w, "       %s: %s   %s %s  %s %s\n",
+			label, pctColored,
+			styleMuted(w, "resets"), clock,
+			styleMuted(w, "in"), countdown)
 	}
 }
