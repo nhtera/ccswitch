@@ -38,3 +38,4 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
         with:
           version: v2.5.0
+          verify: false   # action's "config verify" fetches a remote JSON schema and times out on cold runners
