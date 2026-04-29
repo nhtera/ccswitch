@@ -13,6 +13,7 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(newCurrentCmd())
 	root.AddCommand(newRenameCmd())
 	root.AddCommand(newRemoveCmd())
+	root.AddCommand(newPruneCmd())
 	root.AddCommand(newEnvCmd())
 	root.AddCommand(newExportCmd())
 	root.AddCommand(newImportCmd())
