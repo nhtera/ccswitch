@@ -21,7 +21,7 @@ func newUseCmd() *cobra.Command {
 		Long: `Switch the active Claude Code account.
 
 The argument can be:
-  - A profile name (e.g. "fetch-technology")
+  - A profile name (e.g. "erai-dev")
   - An email address (matched against captured profile emails)
   - A 1-based index into the alphabetical profile list (e.g. "1", "2")`,
 		Args: cobra.ExactArgs(1),

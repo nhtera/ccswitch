@@ -28,8 +28,8 @@ sudo install ccswitch /usr/local/bin/
 
 `ccswitch` uses libsecret via `gnome-keyring` or `kwallet`. Headless / SSH
 sessions usually have neither — `ccswitch` falls back to an encrypted file
-vault and prompts for a passphrase on first use. Run `ccswitch doctor` to
-confirm which backend is active.
+vault (AES-256-GCM + Argon2id) and prompts for a passphrase on first use.
+Run `ccswitch doctor` to confirm which backend is active.
 
 ## Windows
 
@@ -47,11 +47,28 @@ macOS in v1 — please file issues if anything is rough.
 ```sh
 git clone https://github.com/nhtera/ccswitch
 cd ccswitch
-go build ./cmd/ccswitch
-./ccswitch doctor
+make build           # → ./bin/ccswitch
+./bin/ccswitch doctor
 ```
 
-Requires Go 1.22 or newer.
+Requires Go 1.25 or newer.
+
+Common make targets (`make help` lists them all):
+
+| Target | What it does |
+|---|---|
+| `make build` | Compile to `./bin/ccswitch` |
+| `make install` | `go install` into `$GOBIN` (`~/go/bin` by default) |
+| `make run ARGS="..."` | `go run` with arguments, e.g. `make run ARGS="list --usage"` |
+| `make sandbox ARGS="..."` | Run with an isolated `CCSWITCH_CONFIG_DIR` (mktemp) — no risk to real data |
+| `make test` / `make test-v` | Run tests (`-v` for verbose) |
+| `make vet` / `make fmt` / `make tidy` | Static checks, formatting, `go mod tidy` |
+| `make dev` | `vet` + `test` + `build` |
+| `make release` | Stripped, trimpath release build (`CGO_ENABLED=0`) |
+| `make clean` | Remove `bin/` |
+
+Version metadata is injected via `-ldflags '-X main.version=$(VERSION)'`,
+where `VERSION` comes from `git describe --tags --always --dirty`.
 
 ## Verifying the binary
 
@@ -60,3 +77,13 @@ Each release includes a `checksums.txt` of SHA-256 hashes:
 ```sh
 sha256sum -c checksums.txt --ignore-missing
 ```
+
+## Uninstall / reset
+
+```sh
+ccswitch prune       # wipe ALL ccswitch data (profiles, secrets, cache)
+```
+
+`prune` removes the config directory, every per-profile keychain entry,
+and the local cache. It does **not** touch your Claude Code login —
+`claude /status` still works after a prune.

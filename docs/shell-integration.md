@@ -1,6 +1,7 @@
 # Shell Integration
 
-`ccswitch use` writes per-profile environment variables to
+`ccswitch use` (and `ccswitch next` / `switch` / `rotate`, which delegate
+to `use`) writes per-profile environment variables to
 `~/.config/ccswitch/active.env`. To make those vars take effect in your
 shell, source the file once at startup.
 
