@@ -131,11 +131,7 @@ from `~/.claude.json` at capture time. On `use`, the snapshotted
 `oauthAccount` is written back so `claude /status` shows the correct
 account immediately.
 
-For the full design see [docs/system-architecture.md][arch] and the
-[implementation plan][plan].
-
-[arch]: docs/system-architecture.md
-[plan]: plans/260429-0313-ccswitch-v1/plan.md
+For the full design see [docs/system-architecture.md](docs/system-architecture.md).
 
 ## Documentation
 
