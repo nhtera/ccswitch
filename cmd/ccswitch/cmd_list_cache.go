@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -87,12 +86,10 @@ func readUsageCache(profiles []profile.Profile) []usageRow {
 	if err != nil {
 		return nil
 	}
+	// Any read error (missing file, permission, truncation) is treated
+	// as a cache miss — caller falls through to a fresh fetch.
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			// Any other error (permissions, truncation) is treated as a
-			// cache miss — fall through to a fresh fetch.
-		}
 		return nil
 	}
 	var env usageCacheEnvelope

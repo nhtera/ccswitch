@@ -14,13 +14,38 @@ linters:
     - staticcheck
     - unused
   settings:
+    errcheck:
+      # Writing to stdout/stderr in a CLI never meaningfully fails;
+      # checking every Fprint* call adds noise without catching bugs.
+      # Closing an HTTP body via defer is the canonical Go idiom.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (io.Closer).Close
+        - (*net/http.Response).Body.Close
     gosec:
       excludes:
         # G104: errcheck linter already covers unhandled error returns.
         - G104
+        # G204: subprocesses are launched with a hard-coded program name
+        # ("security" CLI on macOS) and program-controlled args. The
+        # variable is the args slice, not the executable path.
+        - G204
+        # G304: file paths come from our own ConfigDir() / ~/.claude.json
+        # resolution, never from untrusted user input. Reading these is
+        # the entire point of the program.
+        - G304
   exclusions:
     rules:
       # Tests can shadow vars / use fixtures freely.
       - path: _test\.go
         linters:
           - gosec
+      # probe.go intentionally swallows non-NotFound errors during
+      # keyring health probing — the empty branch is the documented
+      # behavior, not a forgotten TODO.
+      - path: internal/secrets/probe\.go
+        linters:
+          - staticcheck
+        text: "SA9003"

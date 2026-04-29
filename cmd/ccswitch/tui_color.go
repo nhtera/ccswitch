@@ -24,7 +24,6 @@ const (
 	ansiRed    = "\x1b[31m"
 	ansiGreen  = "\x1b[32m"
 	ansiYellow = "\x1b[33m"
-	ansiCyan   = "\x1b[36m"
 	ansiOrange = "\x1b[38;5;208m" // 256-color orange
 )
 
@@ -56,7 +55,6 @@ func styleMuted(w io.Writer, s string) string   { return stylize(w, ansiDim, s) 
 func styleSuccess(w io.Writer, s string) string { return stylize(w, ansiGreen, s) }
 func styleWarn(w io.Writer, s string) string    { return stylize(w, ansiYellow, s) }
 func styleDanger(w io.Writer, s string) string  { return stylize(w, ansiRed, s) }
-func styleCyan(w io.Writer, s string) string    { return stylize(w, ansiCyan, s) }
 
 // stylePercent colors a percentage value by usage band:
 //
