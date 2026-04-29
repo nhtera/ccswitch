@@ -143,6 +143,7 @@ For the full design see [docs/system-architecture.md][arch] and the
 - [Shell integration](docs/shell-integration.md) — sourcing `active.env` (zsh/bash/fish)
 - [System architecture](docs/system-architecture.md) — package layout, invariants, storage
 - [Troubleshooting](docs/troubleshooting.md) — what to do when `doctor` complains
+- [Release workflow](docs/release-workflow.md) — cutting tags, GoReleaser, Homebrew tap maintenance
 
 ## License
 
