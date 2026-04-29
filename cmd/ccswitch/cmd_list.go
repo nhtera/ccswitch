@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
-	"text/tabwriter"
+	"strings"
 
 	"github.com/nhtera/ccswitch/internal/claude"
 	"github.com/nhtera/ccswitch/internal/profile"
@@ -74,13 +75,14 @@ func newListCmd() *cobra.Command {
 				}
 			}
 
-			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			if showIdentity {
-				fmt.Fprintln(tw, "  NAME\tTYPE\tIDENTITY\tLAST USED\tNOTE")
-			} else {
-				fmt.Fprintln(tw, "  NAME\tTYPE\tLAST USED\tNOTE")
-			}
 			out := cmd.OutOrStdout()
+			var headers []string
+			if showIdentity {
+				headers = []string{"  NAME", "TYPE", "IDENTITY", "LAST USED", "NOTE"}
+			} else {
+				headers = []string{"  NAME", "TYPE", "LAST USED", "NOTE"}
+			}
+			var rows [][]string
 			for _, p := range profiles {
 				marker := " "
 				name := p.Name
@@ -96,23 +98,16 @@ func newListCmd() *cobra.Command {
 				if note == "" {
 					note = "-"
 				}
+				row := []string{marker + " " + name, p.Type}
 				if showIdentity {
-					identity := formatIdentity(p)
-					fmt.Fprintf(tw, "%s %s\t%s\t%s\t%s\t%s\n",
-						marker, name, p.Type,
-						styleMuted(out, identity),
-						styleMuted(out, lastUsed),
-						styleMuted(out, note))
-				} else {
-					fmt.Fprintf(tw, "%s %s\t%s\t%s\t%s\n",
-						marker, name, p.Type,
-						styleMuted(out, lastUsed),
-						styleMuted(out, note))
+					row = append(row, styleMuted(out, formatIdentity(p)))
 				}
+				row = append(row,
+					styleMuted(out, lastUsed),
+					styleMuted(out, note))
+				rows = append(rows, row)
 			}
-			if err := tw.Flush(); err != nil {
-				return err
-			}
+			renderColumns(out, headers, rows)
 
 			// Append running-instance footer (best-effort — silent on error).
 			renderRunningInstances(cmd)
@@ -161,15 +156,72 @@ func renderListWithUsage(ctx context.Context, cmd *cobra.Command, profiles []pro
 }
 
 // formatIdentity renders "email [org]" or just "email" or "-".
+//
+// Anthropic auto-generates a personal-account org name of the form
+// "<email>'s Organization" — we drop that since it duplicates the
+// email and bloats the IDENTITY column.
 func formatIdentity(p profile.Profile) string {
+	org := p.OrgName
+	if strings.HasSuffix(org, "'s Organization") {
+		org = ""
+	}
 	switch {
-	case p.Email != "" && p.OrgName != "":
-		return fmt.Sprintf("%s [%s]", p.Email, p.OrgName)
+	case p.Email != "" && org != "":
+		return fmt.Sprintf("%s [%s]", p.Email, org)
 	case p.Email != "":
 		return p.Email
-	case p.OrgName != "":
-		return fmt.Sprintf("[%s]", p.OrgName)
+	case org != "":
+		return fmt.Sprintf("[%s]", org)
 	default:
 		return "-"
+	}
+}
+
+// renderColumns lays out a table with ANSI-aware column widths.
+// text/tabwriter counts bytes, which over-pads cells containing
+// styleMuted/styleAccent escape codes and pushes rows past the
+// terminal width — see the `list` regression. We compute widths from
+// stripANSI(s) and pad with padVisible.
+func renderColumns(out io.Writer, headers []string, rows [][]string) {
+	if len(headers) == 0 {
+		return
+	}
+	widths := make([]int, len(headers))
+	for i, h := range headers {
+		widths[i] = len(stripANSI(h))
+	}
+	for _, r := range rows {
+		for i, c := range r {
+			if i >= len(widths) {
+				continue
+			}
+			if w := len(stripANSI(c)); w > widths[i] {
+				widths[i] = w
+			}
+		}
+	}
+	const sep = "  "
+	var b strings.Builder
+	writeRow := func(cells []string) {
+		b.Reset()
+		for i, c := range cells {
+			if i >= len(widths) {
+				continue
+			}
+			if i > 0 {
+				b.WriteString(sep)
+			}
+			// Last column needs no trailing pad — keeps lines short.
+			if i == len(widths)-1 {
+				b.WriteString(c)
+			} else {
+				b.WriteString(padVisible(c, widths[i]))
+			}
+		}
+		fmt.Fprintln(out, b.String())
+	}
+	writeRow(headers)
+	for _, r := range rows {
+		writeRow(r)
 	}
 }
