@@ -48,13 +48,19 @@ func runUse(ctx context.Context, cmd *cobra.Command, name string) error {
 	bridge := claude.NewDefaultBridge()
 
 	// Untracked-credential detection: if a live cred exists and doesn't
-	// match any known profile, warn and offer capture.
-	if liveBlob, err := bridge.ReadLive(ctx); err == nil {
-		fp := bridge.Fingerprint(liveBlob)
-		if _, found := store.FindByFingerprint(fp); !found && fp != target.Fingerprint {
-			if !confirm(cmd, "Current credential isn't tracked — switching will overwrite it. Proceed?", false) {
-				fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
-				return nil
+	// match any known profile (by stable identity OR volatile
+	// fingerprint), warn and offer capture. We must NOT warn when the
+	// live cred is already this profile (post-token-refresh, the
+	// volatile fingerprint may differ from target.Fingerprint but the
+	// stable fingerprint will still match).
+	if _, err := bridge.ReadLive(ctx); err == nil {
+		matched, found, _, _ := findActiveProfile(ctx, bridge, store)
+		if !found || matched.Name != target.Name {
+			if !found {
+				if !confirm(cmd, "Current credential isn't tracked — switching will overwrite it. Proceed?", false) {
+					fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+					return nil
+				}
 			}
 		}
 	} else if !errors.Is(err, claude.ErrLiveNotPresent) {

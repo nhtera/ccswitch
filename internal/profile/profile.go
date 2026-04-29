@@ -17,6 +17,11 @@ import (
 const CurrentSchemaVersion = 1
 
 // Profile is one named account snapshot.
+//
+// Email and OrgName are best-effort identity hints copied from Claude
+// Code's global config (~/.claude.json) at capture time. They're
+// omitempty for backward compatibility — older profiles.json files
+// without these fields still load cleanly.
 type Profile struct {
 	Name        string            `json:"name"`
 	Type        string            `json:"type"` // oauth | api | sso
@@ -24,6 +29,8 @@ type Profile struct {
 	LastUsedAt  *time.Time        `json:"last_used_at,omitempty"`
 	Note        string            `json:"note,omitempty"`
 	Fingerprint string            `json:"fingerprint"`
+	Email       string            `json:"email,omitempty"`
+	OrgName     string            `json:"org_name,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
 }
 
@@ -55,3 +62,69 @@ func ValidateEnvKey(key string) error {
 // SecretKey returns the keyring key under which the named profile's
 // credential blob is stored.
 func SecretKey(name string) string { return "profile." + name }
+
+// SuggestName derives a sensible profile name from an account's email
+// and (optional) organization name. Org name is preferred when set
+// because it's usually more memorable than a personal email handle —
+// "erai-dev" is friendlier than "tien-nguyen". Falls back to
+// the email local-part. Output is lowercase, kebab-case, capped at 32
+// chars, and guaranteed to satisfy ValidateName.
+//
+// Returns "" if neither input yields any usable characters — caller
+// should then prompt the user.
+func SuggestName(email, orgName string) string {
+	if name := slugify(orgName); name != "" {
+		return name
+	}
+	if at := indexAt(email); at > 0 {
+		return slugify(email[:at])
+	}
+	return slugify(email)
+}
+
+func indexAt(s string) int {
+	for i, r := range s {
+		if r == '@' {
+			return i
+		}
+	}
+	return -1
+}
+
+// slugify lowercases s, replaces non-[a-z0-9] runs with a single dash,
+// trims leading/trailing dashes and underscores, and caps at 32 chars.
+// Returns "" if the result would be empty.
+func slugify(s string) string {
+	if s == "" {
+		return ""
+	}
+	out := make([]rune, 0, len(s))
+	prevDash := false
+	for _, r := range s {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			out = append(out, r+('a'-'A'))
+			prevDash = false
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			out = append(out, r)
+			prevDash = false
+		default:
+			if !prevDash && len(out) > 0 {
+				out = append(out, '-')
+				prevDash = true
+			}
+		}
+	}
+	// Trim trailing dash.
+	for len(out) > 0 && (out[len(out)-1] == '-' || out[len(out)-1] == '_') {
+		out = out[:len(out)-1]
+	}
+	if len(out) > 32 {
+		out = out[:32]
+		// Re-trim in case truncation left a trailing dash.
+		for len(out) > 0 && (out[len(out)-1] == '-' || out[len(out)-1] == '_') {
+			out = out[:len(out)-1]
+		}
+	}
+	return string(out)
+}

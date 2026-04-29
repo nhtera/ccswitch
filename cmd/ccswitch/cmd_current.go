@@ -36,10 +36,25 @@ func newCurrentCmd() *cobra.Command {
 				return err
 			}
 			if p, ok := store.FindByFingerprint(fp); ok {
-				fmt.Fprintln(cmd.OutOrStdout(), p.Name)
+				if id := formatIdentity(p); id != "-" {
+					fmt.Fprintf(cmd.OutOrStdout(), "%s (%s)\n", p.Name, id)
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), p.Name)
+				}
 				return nil
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "(untracked)")
+			// Untracked credential — show whatever account info Claude
+			// Code's global config knows about so the user can see who's
+			// logged in even without a matching profile.
+			line := "(untracked)"
+			if info, _ := claude.ReadAccountInfo(); info != nil {
+				if info.OrgName != "" {
+					line = fmt.Sprintf("(untracked: %s [%s])", info.Email, info.OrgName)
+				} else if info.Email != "" {
+					line = fmt.Sprintf("(untracked: %s)", info.Email)
+				}
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), line)
 			os.Exit(1)
 			return nil
 		},

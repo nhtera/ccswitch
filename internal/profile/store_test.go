@@ -177,3 +177,50 @@ func TestValidateEnvKey(t *testing.T) {
 		}
 	}
 }
+
+func TestSuggestName_OrgPreferredOverEmail(t *testing.T) {
+	got := SuggestName("tn@erai.dev", "ERAI")
+	if got != "erai" {
+		t.Fatalf("got %q, want erai", got)
+	}
+}
+
+func TestSuggestName_FallsBackToEmailLocalPart(t *testing.T) {
+	got := SuggestName("alice@example.com", "")
+	if got != "alice" {
+		t.Fatalf("got %q, want alice", got)
+	}
+}
+
+func TestSuggestName_SanitizesSpecials(t *testing.T) {
+	got := SuggestName("user.name+tag@a.com", "")
+	if got != "user-name-tag" {
+		t.Fatalf("got %q, want user-name-tag", got)
+	}
+}
+
+func TestSuggestName_OrgWithApostrophesAndAmpersand(t *testing.T) {
+	got := SuggestName("x@x", "Acme & Co.'s Org")
+	// Goal: produce a valid kebab-case name; ampersand/apostrophe/period
+	// all collapse into single dashes. Exact result is implementation
+	// detail but ValidateName must accept it.
+	if err := ValidateName(got); err != nil {
+		t.Fatalf("SuggestName produced invalid name %q: %v", got, err)
+	}
+}
+
+func TestSuggestName_TruncatesAt32(t *testing.T) {
+	got := SuggestName("x@x", "this-is-a-very-long-organization-name-exceeding-thirty-two-characters")
+	if len(got) > 32 {
+		t.Fatalf("not truncated: %q (%d chars)", got, len(got))
+	}
+	if err := ValidateName(got); err != nil {
+		t.Fatalf("truncated name failed validation: %v", err)
+	}
+}
+
+func TestSuggestName_EmptyInputs(t *testing.T) {
+	if got := SuggestName("", ""); got != "" {
+		t.Fatalf("got %q, want empty", got)
+	}
+}
