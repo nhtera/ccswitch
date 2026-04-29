@@ -73,7 +73,10 @@ release:
   prerelease: auto
 
 changelog:
-  use: github
+  # `use: git` formats lines as "* <hash> <subject>" with no author/email.
+  # `use: github` would pull author info from PRs and leak commit-author
+  # emails into the public release notes.
+  use: git
   sort: asc
   filters:
     exclude:
