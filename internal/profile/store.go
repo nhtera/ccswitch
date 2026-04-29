@@ -99,6 +99,24 @@ func (s *Store) FindByFingerprint(fp string) (Profile, bool) {
 	return Profile{}, false
 }
 
+// FindByStableFingerprint returns the profile whose StableFingerprint
+// matches sfp. Empty sfp never matches (callers shouldn't pass it,
+// but guarding here keeps FindByFingerprint as the single source of
+// truth for legacy profiles whose StableFingerprint is "").
+func (s *Store) FindByStableFingerprint(sfp string) (Profile, bool) {
+	if sfp == "" {
+		return Profile{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.data.Profiles {
+		if p.StableFingerprint == sfp {
+			return p, true
+		}
+	}
+	return Profile{}, false
+}
+
 // Add inserts a new profile. Returns ErrAlreadyExists on name collision and
 // ErrFingerprintDup on fingerprint collision.
 func (s *Store) Add(p Profile) error {

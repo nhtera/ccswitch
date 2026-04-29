@@ -1,6 +1,8 @@
 package claude
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -26,6 +28,29 @@ func (a *AccountInfo) IsPersonal() bool {
 		return false
 	}
 	return a.OrgUUID == "" && a.OrgName == ""
+}
+
+// StableFingerprint returns a refresh-safe identity hash derived from
+// the account-stable claims (accountUuid + orgUuid). Unlike
+// Fingerprint() which hashes the volatile credential blob (changes on
+// every token refresh), this stays constant across token refreshes —
+// so callers can match a refreshed live credential against profiles
+// captured before the refresh.
+//
+// Returns "" if neither accountUuid nor orgUuid is present, in which
+// case callers should fall back to the volatile Fingerprint().
+func (a *AccountInfo) StableFingerprint() string {
+	if a == nil {
+		return ""
+	}
+	if a.AccountUUID == "" && a.OrgUUID == "" {
+		return ""
+	}
+	h := sha256.New()
+	h.Write([]byte(a.AccountUUID))
+	h.Write([]byte{'|'})
+	h.Write([]byte(a.OrgUUID))
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
 // GlobalConfigPath returns the path to Claude Code's global config file.

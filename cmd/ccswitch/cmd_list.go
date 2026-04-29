@@ -13,6 +13,7 @@ import (
 
 func newListCmd() *cobra.Command {
 	var jsonOut bool
+	var withUsage bool
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
@@ -28,8 +29,20 @@ func newListCmd() *cobra.Command {
 			}
 			profiles := store.All()
 
+			// Resolve which profile (if any) is currently active. We
+			// match by stable fingerprint first (refresh-safe) and fall
+			// back to volatile blob fingerprint, so the active marker
+			// stays correct even after Claude Code rotates the token.
+			bridge := claude.NewDefaultBridge()
+			activeName := ""
+			if active, ok, _, _ := findActiveProfile(ctx, bridge, store); ok {
+				activeName = active.Name
+			}
+			// currentFp kept for the JSON output's
+			// "current_fingerprint" field — script consumers may already
+			// rely on it.
 			currentFp := ""
-			if blob, err := claude.NewDefaultBridge().ReadLive(ctx); err == nil {
+			if blob, err := bridge.ReadLive(ctx); err == nil {
 				currentFp = claude.Fingerprint(blob)
 			}
 
@@ -43,6 +56,10 @@ func newListCmd() *cobra.Command {
 			if len(profiles) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No profiles. Run `ccswitch add` after `claude /login`.")
 				return nil
+			}
+
+			if withUsage {
+				return renderListWithUsage(ctx, cmd, profiles, activeName)
 			}
 
 			// Show identity columns (EMAIL/ORG) only when at least one
@@ -64,7 +81,7 @@ func newListCmd() *cobra.Command {
 			}
 			for _, p := range profiles {
 				marker := " "
-				if p.Fingerprint == currentFp {
+				if p.Name == activeName {
 					marker = "*"
 				}
 				lastUsed := "-"
@@ -92,7 +109,35 @@ func newListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit JSON instead of a table")
+	cmd.Flags().BoolVar(&withUsage, "usage", false, "fetch 5h/7d quota usage from Anthropic API (network call per profile)")
 	return cmd
+}
+
+// renderListWithUsage produces the cswap-style layout: an "Accounts:"
+// section with one block per profile (identity row + 5h/7d lines),
+// followed by the running-instance footer. Network calls are made
+// here only.
+func renderListWithUsage(ctx context.Context, cmd *cobra.Command, profiles []profile.Profile, activeName string) error {
+	out := cmd.OutOrStdout()
+	secStore, err := openSecrets(ctx)
+	if err != nil {
+		return err
+	}
+	rows := fetchUsageForProfiles(ctx, profiles, secStore)
+
+	fmt.Fprintln(out, "Accounts:")
+	for i, p := range profiles {
+		identity := formatIdentity(p)
+		marker := ""
+		if p.Name == activeName {
+			marker = " (active)"
+		}
+		fmt.Fprintf(out, "  %s: %s%s\n", p.Name, identity, marker)
+		renderUsageRows(out, []usageRow{rows[i]}, []profile.Profile{p})
+		fmt.Fprintln(out)
+	}
+	renderRunningInstances(cmd)
+	return nil
 }
 
 // formatIdentity renders "email [org]" or just "email" or "-".

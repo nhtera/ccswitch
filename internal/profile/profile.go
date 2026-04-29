@@ -22,16 +22,24 @@ const CurrentSchemaVersion = 1
 // Code's global config (~/.claude.json) at capture time. They're
 // omitempty for backward compatibility — older profiles.json files
 // without these fields still load cleanly.
+//
+// StableFingerprint is a refresh-safe identity hash (sha256 of
+// accountUuid + orgUuid). It survives OAuth token rotation. The
+// volatile Fingerprint (over the full credential blob) remains the
+// canonical identity key for legacy profiles captured before this
+// field existed; callers should try StableFingerprint first and fall
+// back to Fingerprint.
 type Profile struct {
-	Name        string            `json:"name"`
-	Type        string            `json:"type"` // oauth | api | sso
-	CreatedAt   time.Time         `json:"created_at"`
-	LastUsedAt  *time.Time        `json:"last_used_at,omitempty"`
-	Note        string            `json:"note,omitempty"`
-	Fingerprint string            `json:"fingerprint"`
-	Email       string            `json:"email,omitempty"`
-	OrgName     string            `json:"org_name,omitempty"`
-	Env         map[string]string `json:"env,omitempty"`
+	Name              string            `json:"name"`
+	Type              string            `json:"type"` // oauth | api | sso
+	CreatedAt         time.Time         `json:"created_at"`
+	LastUsedAt        *time.Time        `json:"last_used_at,omitempty"`
+	Note              string            `json:"note,omitempty"`
+	Fingerprint       string            `json:"fingerprint"`
+	StableFingerprint string            `json:"stable_fingerprint,omitempty"`
+	Email             string            `json:"email,omitempty"`
+	OrgName           string            `json:"org_name,omitempty"`
+	Env               map[string]string `json:"env,omitempty"`
 }
 
 // File is the persisted shape of profiles.json.

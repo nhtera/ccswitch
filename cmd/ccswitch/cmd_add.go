@@ -91,6 +91,7 @@ suggestion.`,
 			if info != nil {
 				p.Email = info.Email
 				p.OrgName = info.OrgName
+				p.StableFingerprint = info.StableFingerprint()
 			}
 			if err := store.Add(p); err != nil {
 				_ = secStore.Delete(ctx, profile.SecretKey(name))

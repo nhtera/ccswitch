@@ -21,21 +21,25 @@ func newCurrentCmd() *cobra.Command {
 				ctx = context.Background()
 			}
 			bridge := claude.NewDefaultBridge()
-			blob, err := bridge.ReadLive(ctx)
-			if err != nil {
+
+			// Confirm there IS a live credential first so the
+			// "no live credential" message stays separate from the
+			// "untracked" branch below.
+			if _, err := bridge.ReadLive(ctx); err != nil {
 				if errors.Is(err, claude.ErrLiveNotPresent) {
 					fmt.Fprintln(cmd.ErrOrStderr(), "no live credential — run `claude /login`")
 					os.Exit(1)
 				}
 				return err
 			}
-			fp := bridge.Fingerprint(blob)
 
 			store, err := profile.LoadStore()
 			if err != nil {
 				return err
 			}
-			if p, ok := store.FindByFingerprint(fp); ok {
+
+			p, ok, _, info := findActiveProfile(ctx, bridge, store)
+			if ok {
 				if id := formatIdentity(p); id != "-" {
 					fmt.Fprintf(cmd.OutOrStdout(), "%s (%s)\n", p.Name, id)
 				} else {
@@ -47,7 +51,7 @@ func newCurrentCmd() *cobra.Command {
 			// Code's global config knows about so the user can see who's
 			// logged in even without a matching profile.
 			line := "(untracked)"
-			if info, _ := claude.ReadAccountInfo(); info != nil {
+			if info != nil {
 				if info.OrgName != "" {
 					line = fmt.Sprintf("(untracked: %s [%s])", info.Email, info.OrgName)
 				} else if info.Email != "" {
